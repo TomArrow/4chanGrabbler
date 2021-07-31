@@ -5,8 +5,10 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Web;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -15,6 +17,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
+using Microsoft.Win32;
 using Salaros.Configuration;
 
 namespace _4chanGrabbler
@@ -80,6 +83,21 @@ namespace _4chanGrabbler
             return filename;
         }
 
+        private void updateStatus(string newLine)
+        {
+            lock (txtStatus)
+            {
+                string tmp = txtStatus.Text;
+                tmp += Environment.NewLine + newLine;
+                if (tmp.Length > maxStatusLength)
+                {
+                    tmp = tmp.Substring(tmp.Length - maxStatusLength);
+                }
+                txtStatus.Text = tmp;
+                statusScrollViewer.ScrollToBottom();
+            }
+        }
+
         private void grabbleLink(string link)
         {
             MatchCollection matches = linkAnalyzer.Matches(link);
@@ -115,7 +133,7 @@ namespace _4chanGrabbler
 
                     var progressHandler = new Progress<string>(value =>
                     {
-                        lock (txtStatus)
+                        /*lock (txtStatus)
                         {
                             string tmp = txtStatus.Text;
                             tmp += Environment.NewLine +value.ToString();
@@ -125,7 +143,8 @@ namespace _4chanGrabbler
                             }
                             txtStatus.Text = tmp;
                             statusScrollViewer.ScrollToBottom();
-                        }
+                        }*/
+                        updateStatus(value.ToString());
                     });
                     var progress = progressHandler as IProgress<string>;
 
@@ -296,8 +315,168 @@ namespace _4chanGrabbler
             // Handle your clipboard update here, debug logging example:
             if (Clipboard.ContainsText())
             {
-                txtClipboard.Text = Clipboard.GetText();
+                try
+                {
+
+                    txtClipboard.Text = Clipboard.GetText();
+                }catch(Exception exe)
+                {
+                    // nothing. duh.
+                    txtClipboard.Text = "-clipboard error-";
+                }
             }
+        }
+
+        private void fourplebsImageSearchLinkCrawlButton_Click(object sender, RoutedEventArgs e)
+        {
+            if(fourplebsImageSearchTerm.Text.Trim() == "")
+            {
+                MessageBox.Show("Enter a search term first");
+            } else
+            {
+                string searchTerm = fourplebsImageSearchTerm.Text.Trim();
+
+                SaveFileDialog sfd = new SaveFileDialog();
+                sfd.Title = "Select an output text file to append found links to";
+                if(sfd.ShowDialog() == true)
+                {
+                    string saveFile = sfd.FileName;
+
+                    string endDateResume = txtEndDateResume.Text.Trim();
+
+                    fourPlebsImageSearch(searchTerm, saveFile,endDateResume);
+                }
+            }
+        }
+
+        private void fourPlebsImageSearch(string searchString, string fileToSaveTo, string endDateResume = "")
+        {
+            string searchTerm = HttpUtility.UrlEncode(searchString);
+
+            JsonSerializerOptions opt = new JsonSerializerOptions();
+            opt.NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString;
+
+
+
+            var progressHandler = new Progress<string>(value =>
+            {
+                /*lock (txtStatus)
+                {
+                    string tmp = txtStatus.Text;
+                    tmp += Environment.NewLine +value.ToString();
+                    if (tmp.Length > maxStatusLength)
+                    {
+                        tmp = tmp.Substring(tmp.Length - maxStatusLength);
+                    }
+                    txtStatus.Text = tmp;
+                    statusScrollViewer.ScrollToBottom();
+                }*/
+                updateStatus(value.ToString());
+            });
+            var progress = progressHandler as IProgress<string>;
+
+            
+
+            int requestsPerMinuteAllowed = 5;
+            int timeoutBetweenRequests = (60000 / requestsPerMinuteAllowed);
+            timeoutBetweenRequests += 1000; // just a buffer to be safe.
+
+            string crawlUrlBase = "http://archive.4plebs.org/_/api/chan/search/?filename=" + searchTerm; // http://archive.4plebs.org/_/api/chan/search/?filename=wojak&end=2021-03-11
+
+            Regex zeroReplacer = new Regex(Regex.Escape("{\"0\":{"),RegexOptions.Compiled);
+            Regex dateReformatter = new Regex(@"(\d+)/(\d+)/(\d+)\(\w+\)(\d+):(\d+)",RegexOptions.Singleline|RegexOptions.IgnoreCase|RegexOptions.Compiled);
+
+            TimeZoneInfo fourchantimezone = TimeZoneInfo.CreateCustomTimeZone("4chan", new TimeSpan(-4, 00, 00), "4chan", "4chan");
+            _ = Task.Run(() =>
+            {
+
+                bool searchFinished = false;
+                bool isFirstRequest = true;
+                string endDateToAppend = "";
+                int index = 0;
+                while (!searchFinished) {
+
+                    System.Threading.Thread.Sleep(timeoutBetweenRequests);
+
+
+                    string crawlUrl = crawlUrlBase;
+                    if (!isFirstRequest)
+                    {
+                        crawlUrl += "&end=" + endDateToAppend;
+                    } else if(endDateResume != "")
+                    {
+                        crawlUrl += "&end=" + endDateResume;
+                    }
+                    progress.Report("try " + index++ + crawlUrl);
+                    HttpWebRequest req = (HttpWebRequest)WebRequest.Create(crawlUrl);
+                    req.UserAgent = "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0";
+                    string webcontent = "";
+                    try
+                    {
+                        req.AutomaticDecompression = DecompressionMethods.All;
+
+                        req.Method = "GET";
+
+                        var response = req.GetResponse();
+                        using (var strm = new StreamReader(response.GetResponseStream()))
+                        {
+                            webcontent = strm.ReadToEnd();
+
+                            //File.AppendAllText(fileToSaveTo, webcontent);
+
+                            string newText = zeroReplacer.Replace(webcontent,"{\"root\":{", 1);
+
+                            FourPlebsSearchResult.Rootobject ro = JsonSerializer.Deserialize<FourPlebsSearchResult.Rootobject>(newText, opt);
+                            //RootobjectTweetDetail tweet = JsonSerializer.Deserialize<RootobjectTweetDetail>(file1, opt);
+                            List<string> imageDlLinks = new List<string>();
+                            Int64 lastTimeStamp = 0;
+                            string lastFourChanDate = "";
+                            foreach (FourPlebsSearchResult.Post post in ro.root.posts)
+                            {
+                                string dlLink = post.media.media_link;
+                                imageDlLinks.Add(dlLink);
+                                lastTimeStamp = post.timestamp;
+                                lastFourChanDate = post.fourchan_date;
+                            }
+
+                            //DateTime actualDateTime = DateTimeOffset.FromUnixTimeSeconds(lastFourChanDate).UtcDateTime;
+                            //endDateToAppend = DateTimeOffset.FromUnixTimeSeconds(lastFourChanDate).UtcDateTime.ToString("yyyy-MM-dd-HH-mm");
+
+                            //DateTime cstTime = TimeZoneInfo.ConvertTimeFromUtc(timeUtc, cstZone);
+                            //endDateToAppend = TimeZoneInfo.ConvertTimeFromUtc(DateTimeOffset.FromUnixTimeSeconds(lastTimeStamp).UtcDateTime, fourchantimezone).ToString("yyyy-MM-dd-HH:mm");
+                            endDateToAppend = dateReformatter.Replace(lastFourChanDate, "20$3-$1-$2-$4:$5");
+
+                            //string allLinks = String.Join("\n", imageDlLinks);
+
+                            File.AppendAllLines(fileToSaveTo, imageDlLinks);
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        if (webcontent == "{\"error\":\"No results found.\"}")
+                        {
+                            progress.Report("Image search finished.");
+                            searchFinished = true;
+                        }
+                        else
+                        {
+                            progress.Report(e.Message);
+                            if (e.InnerException != null)
+                            {
+
+                                progress.Report(e.InnerException.Message);
+                            }
+                        }
+
+
+                    }
+
+                    isFirstRequest = false;
+                }
+                
+                
+            });
+                
         }
     }
 }

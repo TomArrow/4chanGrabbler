@@ -7,7 +7,25 @@
         mc:Ignorable="d"
         Title="4chan Grabbler" Height="450" Width="800">
     <Grid>
-        <StackPanel>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="9*"/>
+            <ColumnDefinition Width="91*"/>
+            <ColumnDefinition Width="200"/>
+        </Grid.ColumnDefinitions>
+        <StackPanel Grid.Column="2">
+            <Label>Extra functions</Label>
+            <GroupBox Header="4Plebs Image search link crawl" Padding="5" Margin="5">
+                <StackPanel>
+                    <Label>Search term:</Label>
+                    <TextBox x:Name="fourplebsImageSearchTerm"></TextBox>
+                    <Label>end date resume:</Label>
+                    <TextBox x:Name="txtEndDateResume"></TextBox>
+                    <Button x:Name="fourplebsImageSearchLinkCrawlButton" Click="fourplebsImageSearchLinkCrawlButton_Click">DoCrawl</Button>
+                    <TextBlock TextWrapping="Wrap">P.S. It's slow because of 4plebs' rate limits.</TextBlock>
+                </StackPanel>
+            </GroupBox>
+        </StackPanel>
+        <StackPanel Grid.ColumnSpan="2">
             <DockPanel>
                 <Label DockPanel.Dock="Left">Clipboard:</Label>
                 <Button x:Name="btnClipboardGrabble" Click="btnClipboardGrabble_Click" Width="100" DockPanel.Dock="Right">
@@ -23,15 +41,17 @@
                 <Button x:Name="btnManualGrabble" Width="100" DockPanel.Dock="Right" Click="btnManualGrabble_Click">
                     <WrapPanel>
                         <Image Source="images/grabblerBW.png" MaxHeight="20" Margin="-35 0 3 0"></Image>
-                            <TextBlock>Grabble</TextBlock>
+                        <TextBlock>Grabble</TextBlock>
                     </WrapPanel>
                 </Button>
                 <TextBox x:Name="txtManual" IsEnabled="True"></TextBox>
             </DockPanel>
-            <ScrollViewer MaxHeight="350" x:Name="statusScrollViewer" ><TextBlock x:Name="txtStatus" TextWrapping="Wrap" MinHeight="500" ScrollViewer.CanContentScroll="True" ScrollViewer.VerticalScrollBarVisibility="Visible">
+            <ScrollViewer MaxHeight="350" x:Name="statusScrollViewer" >
+                <TextBlock x:Name="txtStatus" TextWrapping="Wrap" MinHeight="500" ScrollViewer.CanContentScroll="True" ScrollViewer.VerticalScrollBarVisibility="Visible">
                 Started.
-            </TextBlock></ScrollViewer>
-            
+                </TextBlock>
+            </ScrollViewer>
+
         </StackPanel>
     </Grid>
 </Window>
