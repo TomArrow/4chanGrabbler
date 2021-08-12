@@ -51,6 +51,8 @@ namespace _4chanGrabbler
                 archiveSites.Add(siteHere.url, siteHere);
             }
 
+            Directory.CreateDirectory("debuglogs");
+
         }
 
         Regex linkAnalyzer = new Regex("https?\\://((.*?)\\.)?(.*?)\\.(.*?)/(.*?)/thread/(\\d+?)(/|$)", RegexOptions.Multiline |RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -349,6 +351,28 @@ namespace _4chanGrabbler
             }
         }
 
+        private void pushShiftImageSearchLinkCrawlButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (pushShiftImageSearchSubreddit.Text.Trim() == "")
+            {
+                MessageBox.Show("Enter a subreddit first");
+            }
+            else
+            {
+                string subreddit = pushShiftImageSearchSubreddit.Text.Trim();
+
+                SaveFileDialog sfd = new SaveFileDialog();
+                sfd.Title = "Select an output text file to append found links to";
+                if (sfd.ShowDialog() == true)
+                {
+                    string saveFile = sfd.FileName;
+
+                    string endDateResume = txtEndDateResume.Text.Trim();
+
+                    pushShiftImageSearch(subreddit, saveFile, endDateResume);
+                }
+            }
+        }
         private void fourPlebsImageSearch(string searchString, string fileToSaveTo, string endDateResume = "")
         {
             string searchTerm = HttpUtility.UrlEncode(searchString);
@@ -400,12 +424,17 @@ namespace _4chanGrabbler
 
 
                     string crawlUrl = crawlUrlBase;
+                    string endDate = "";
                     if (!isFirstRequest)
                     {
-                        crawlUrl += "&end=" + endDateToAppend;
+                        endDate= endDateToAppend;
                     } else if(endDateResume != "")
                     {
-                        crawlUrl += "&end=" + endDateResume;
+                        endDate = endDateResume;
+                    }
+                    if(endDate != "")
+                    {
+                        crawlUrl += "&end=" + endDate;
                     }
                     progress.Report("try " + index++ + crawlUrl);
                     HttpWebRequest req = (HttpWebRequest)WebRequest.Create(crawlUrl);
@@ -422,6 +451,7 @@ namespace _4chanGrabbler
                         {
                             webcontent = strm.ReadToEnd();
 
+                            File.WriteAllText(Helpers.GetUnusedFilename( "debuglogs/4plebs_" + searchString + "_" + endDate + ".json"),webcontent);
                             //File.AppendAllText(fileToSaveTo, webcontent);
 
                             string newText = zeroReplacer.Replace(webcontent,"{\"root\":{", 1);
@@ -478,5 +508,142 @@ namespace _4chanGrabbler
             });
                 
         }
+
+        private void pushShiftImageSearch(string subreddit, string fileToSaveTo, string endDateResume = "")
+        {
+            string subredditText = HttpUtility.UrlEncode(subreddit);
+
+            JsonSerializerOptions opt = new JsonSerializerOptions();
+            opt.NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString;
+
+
+
+            var progressHandler = new Progress<string>(value =>
+            {
+                /*lock (txtStatus)
+                {
+                    string tmp = txtStatus.Text;
+                    tmp += Environment.NewLine +value.ToString();
+                    if (tmp.Length > maxStatusLength)
+                    {
+                        tmp = tmp.Substring(tmp.Length - maxStatusLength);
+                    }
+                    txtStatus.Text = tmp;
+                    statusScrollViewer.ScrollToBottom();
+                }*/
+                updateStatus(value.ToString());
+            });
+            var progress = progressHandler as IProgress<string>;
+
+            
+
+            int requestsPerMinuteAllowed = 200;
+            int timeoutBetweenRequests = (60000 / requestsPerMinuteAllowed);
+            //timeoutBetweenRequests += 500; // just a buffer to be safe.
+
+            //string crawlUrlBase = "http://archive.4plebs.org/_/api/chan/search/?filename=" + searchTerm; // http://archive.4plebs.org/_/api/chan/search/?filename=wojak&end=2021-03-11
+            string crawlUrlBase = "https://api.pushshift.io/reddit/search/submission/?subreddit=" + subredditText +"&sort=desc&sort_type=created_utc&size=100"; 
+
+            //Regex zeroReplacer = new Regex(Regex.Escape("{\"0\":{"),RegexOptions.Compiled);
+            //Regex dateReformatter = new Regex(@"(\d+)/(\d+)/(\d+)\(\w+\)(\d+):(\d+)",RegexOptions.Singleline|RegexOptions.IgnoreCase|RegexOptions.Compiled);
+
+            //TimeZoneInfo fourchantimezone = TimeZoneInfo.CreateCustomTimeZone("4chan", new TimeSpan(-4, 00, 00), "4chan", "4chan");
+            _ = Task.Run(() =>
+            {
+
+                bool searchFinished = false;
+                bool isFirstRequest = true;
+                string endDateToAppend = "";
+                int index = 0;
+                while (!searchFinished) {
+
+                    System.Threading.Thread.Sleep(timeoutBetweenRequests);
+
+
+                    string crawlUrl = crawlUrlBase;
+                    string endDate = "";
+                    if (!isFirstRequest)
+                    {
+                        endDate = endDateToAppend;
+                    }
+                    else if (endDateResume != "")
+                    {
+                        endDate = endDateResume;
+                    }
+                    if (endDate != "")
+                    {
+                        crawlUrl += "&before=" + endDate;
+                    }
+                    progress.Report("try " + index++ + crawlUrl);
+                    HttpWebRequest req = (HttpWebRequest)WebRequest.Create(crawlUrl);
+                    //req.UserAgent = "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0";
+                    string webcontent = "";
+                    try
+                    {
+                        req.AutomaticDecompression = DecompressionMethods.All;
+
+                        req.Method = "GET";
+
+                        var response = req.GetResponse();
+                        using (var strm = new StreamReader(response.GetResponseStream()))
+                        {
+                            webcontent = strm.ReadToEnd();
+
+                            File.WriteAllText(Helpers.GetUnusedFilename("debuglogs/pushshift_" + subreddit + "_" + endDate + ".json"), webcontent);
+
+                            PushShiftSearchResult.Rootobject ro = JsonSerializer.Deserialize<PushShiftSearchResult.Rootobject>(webcontent, opt);
+                            List<string> imageDlLinks = new List<string>();
+                            Int64 lastTimeStamp = 0;
+                            if(ro.data.Length == 0)
+                            {
+                                progress.Report("Image search finished.");
+                                searchFinished = true;
+                            }
+                            foreach (PushShiftSearchResult.Datum post in ro.data)
+                            {
+                                string dlLink = post.url;
+                                imageDlLinks.Add(dlLink);
+                                lastTimeStamp = post.created_utc;
+                            }
+                            if(endDateToAppend == lastTimeStamp.ToString()) // stuck in endless loop. no need to continue.
+                            {
+                                if(ro.data.Length < 100)
+                                {
+
+                                    progress.Report("Image search finished.");
+                                    searchFinished = true;
+                                } else
+                                {
+                                    // Too many posts sharing the same timestamp. Manually decrease timestamp.
+                                    progress.Report("Image search reached loop. Manually decreasing timestamp. Likely will result in skipped posts.");
+                                    endDateToAppend = (lastTimeStamp-1).ToString();
+                                }
+                            } else
+                            {
+
+                                endDateToAppend = lastTimeStamp.ToString();
+                            }
+
+                            File.AppendAllLines(fileToSaveTo, imageDlLinks);
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        progress.Report(e.Message);
+                        if (e.InnerException != null)
+                        {
+
+                            progress.Report(e.InnerException.Message);
+                        }
+                    }
+
+                    isFirstRequest = false;
+                }
+                
+                
+            });
+                
+        }
+
     }
 }

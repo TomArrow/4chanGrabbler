@@ -14,16 +14,31 @@
         </Grid.ColumnDefinitions>
         <StackPanel Grid.Column="2">
             <Label>Extra functions</Label>
-            <GroupBox Header="4Plebs Image search link crawl" Padding="5" Margin="5">
-                <StackPanel>
-                    <Label>Search term:</Label>
-                    <TextBox x:Name="fourplebsImageSearchTerm"></TextBox>
-                    <Label>end date resume:</Label>
-                    <TextBox x:Name="txtEndDateResume"></TextBox>
-                    <Button x:Name="fourplebsImageSearchLinkCrawlButton" Click="fourplebsImageSearchLinkCrawlButton_Click">DoCrawl</Button>
-                    <TextBlock TextWrapping="Wrap">P.S. It's slow because of 4plebs' rate limits.</TextBlock>
-                </StackPanel>
-            </GroupBox>
+            <TabControl>
+                <TabItem Header="4plebs">
+                    <StackPanel>
+                        <Label>4Plebs Image search link crawl</Label>
+                        <Label>Search term:</Label>
+                        <TextBox x:Name="fourplebsImageSearchTerm"></TextBox>
+                        <Label>end date resume:</Label>
+                        <TextBox x:Name="txtEndDateResume"></TextBox>
+                        <Button x:Name="fourplebsImageSearchLinkCrawlButton" Click="fourplebsImageSearchLinkCrawlButton_Click">DoCrawl</Button>
+                        <TextBlock TextWrapping="Wrap">P.S. It's slow because of 4plebs' rate limits.</TextBlock>
+                    </StackPanel>
+                </TabItem>
+                <TabItem Header="Pushshift">
+                    <StackPanel>
+                        <Label>PushShift Image search link crawl</Label>
+                        <Label>Subreddit:</Label>
+                        <TextBox x:Name="pushShiftImageSearchSubreddit"></TextBox>
+                        <Label>end date resume:</Label>
+                        <TextBox x:Name="txtEndDateResumePushShift"></TextBox>
+                        <Button x:Name="pushShiftImageSearchLinkCrawlButton" Click="pushShiftImageSearchLinkCrawlButton_Click">DoCrawl</Button>
+                    </StackPanel>
+                </TabItem>
+            </TabControl>
+            
+            
         </StackPanel>
         <StackPanel Grid.ColumnSpan="2">
             <DockPanel>
