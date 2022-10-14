@@ -32,7 +32,7 @@ namespace _4chanGrabbler
         {
             InitializeComponent();
 
-            ConfigParser configParser = new ConfigParser("archiveSites.ini");
+            ConfigParserMod configParser = new ConfigParserMod("archiveSites.ini");
 
             archiveSites = new Dictionary<string, ArchiveSite>();
 
@@ -48,6 +48,24 @@ namespace _4chanGrabbler
                 }
                 siteHere.regex = new Regex(configParser.GetValue(section.SectionName, "regex").Trim(), RegexOptions.Multiline |RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+                // URL replacements, to avoid redirects and whatnot sometimes.
+                string[] urlReplaceRegexes = configParser.getDuplicateValueArray(section.SectionName, "imageUrlReplaceRegex");
+                string[] urlReplaceResults = configParser.getDuplicateValueArray(section.SectionName, "imageUrlReplaceResult");
+
+                if(urlReplaceRegexes.Length != urlReplaceResults.Length)
+                {
+                    MessageBox.Show($"Error. Section {section.SectionName} mismatch of the count of imageUrlReplaceRegex and imageUrlReplaceResult parameters. For each imageUrlReplaceRegex there must be one imageUrlReplaceResult.");
+                } else
+                {
+                    siteHere.urlReplacements = new ReplacementRegex[urlReplaceRegexes.Length];
+                    for (int i = 0; i < siteHere.urlReplacements.Length; i++)
+                    {
+                        siteHere.urlReplacements[i].regex = new Regex(urlReplaceRegexes[i].Trim(), RegexOptions.Multiline | RegexOptions.IgnoreCase | RegexOptions.Compiled);
+                        siteHere.urlReplacements[i].replacement = urlReplaceResults[i].Trim();
+                    }
+                }
+
+
                 archiveSites.Add(siteHere.url, siteHere);
             }
 
@@ -55,17 +73,25 @@ namespace _4chanGrabbler
 
         }
 
-        Regex linkAnalyzer = new Regex("https?\\://((.*?)\\.)?(.*?)\\.(.*?)/(.*?)/thread/(\\d+?)(/|$)", RegexOptions.Multiline |RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        Regex linkAnalyzer = new Regex("https?\\://((.*?)\\.)?(.*?)\\.(.*?)/(.*?)/thread/(\\d+?)(/?#[\\w\\d]+|/|$)", RegexOptions.Multiline |RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        Regex wildCardReplacer = new Regex(@"###([\w\d]+)###", RegexOptions.Multiline |RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         
 
         //Regex archiveHTMLAnalyzer = new Regex("https?\\://((.*?)\\.)?(.*?)\\.(.*?)/(.*?)/thread/(\\d+?)/", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         //Regex fortuneHTMLAnalyzer = new Regex("https?\\://((.*?)\\.)?(.*?)\\.(.*?)/(.*?)/thread/(\\d+?)/", RegexOptions.IgnoreCase | RegexOptions.Compiled); // native 4chan
 
+        struct ReplacementRegex
+        {
+            public Regex regex;
+            public string replacement;
+        }
+
         struct ArchiveSite
         {
             public string url;
             public string[] boards;
+            public ReplacementRegex[] urlReplacements;
             public Regex regex;
         }
         Dictionary<string,ArchiveSite> archiveSites;
@@ -211,16 +237,34 @@ namespace _4chanGrabbler
                                         while (retry && currentTry<=retrycount)
                                         {
                                             currentTry++;
+                                            string imageUrl = "";
+                                            string realName = "";
                                             try
                                             {
 
-                                                string imageUrl = htmlMatch.Groups["url"].Value;
-                                                string realName = htmlMatch.Groups["realname"].Value;
+                                                imageUrl = htmlMatch.Groups["url"].Value;
+                                                realName = htmlMatch.Groups["realname"].Value;
+
+                                                foreach(ReplacementRegex replaceRegex in thisArchiveSite.urlReplacements)
+                                                {
+                                                    // First replace ###blah### wildcards in the replacement string using capture groups from the normal url finder regex
+                                                    // Extra amount of flexibility that way.
+                                                    string replacement = wildCardReplacer.Replace(replaceRegex.replacement, (Match m) =>
+                                                    {
+                                                        if (m.Groups.Count > 1 && m.Groups[1].Success && htmlMatch.Groups.ContainsKey(m.Groups[1].Value))
+                                                        {
+                                                            return htmlMatch.Groups[m.Groups[1].Value].Success ? htmlMatch.Groups[m.Groups[1].Value].Value : "";
+                                                        }
+                                                        return m.Value;
+                                                    });
+                                                    imageUrl = replaceRegex.regex.Replace(imageUrl, replacement);
+                                                }
 
                                                 string sanitizedRealName = sanitizeFilename(realName);
 
                                                 using (var client = new WebClient())
                                                 {
+                                                    client.Headers.Set(HttpRequestHeader.UserAgent, "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0");
                                                     bool shouldDownload = true;
                                                     FileInfo fileInfo;
                                                     if (File.Exists(saveFolderPath + sanitizedRealName))
@@ -258,7 +302,7 @@ namespace _4chanGrabbler
                                             }
                                             catch (Exception e)
                                             {
-                                                progress.Report("Error (try "+currentTry+" of "+retrycount+"): " + e.Message);
+                                                progress.Report("Downloading '"+ imageUrl + "' ('"+ realName + "') failed. Error (try "+currentTry+" of "+retrycount+"): " + e.Message);
                                                 if (e.InnerException != null)
                                                 {
 
@@ -438,7 +482,7 @@ namespace _4chanGrabbler
                     }
                     progress.Report("try " + index++ + crawlUrl);
                     HttpWebRequest req = (HttpWebRequest)WebRequest.Create(crawlUrl);
-                    req.UserAgent = "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0";
+                    req.UserAgent = "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0";
                     string webcontent = "";
                     try
                     {
