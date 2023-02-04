@@ -22,6 +22,14 @@ using Salaros.Configuration;
 
 namespace _4chanGrabbler
 {
+
+    enum SearchType
+    {
+        Image,
+        Text
+    }
+
+
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
@@ -390,7 +398,7 @@ namespace _4chanGrabbler
 
                     string endDateResume = txtEndDateResume.Text.Trim();
 
-                    fourPlebsImageSearch(searchTerm, saveFile,endDateResume);
+                    fourPlebsSearch(SearchType.Image, searchTerm, null, saveFile,endDateResume);
                 }
             }
         }
@@ -417,7 +425,9 @@ namespace _4chanGrabbler
                 }
             }
         }
-        private void fourPlebsImageSearch(string searchString, string fileToSaveTo, string endDateResume = "")
+
+        // Subregex is for Text search and optional. Pass null to just return the whole post that was matched.
+        private void fourPlebsSearch(SearchType searchType,string searchString, Regex subRegex, string fileToSaveTo, string endDateResume = "")
         {
             string searchTerm = HttpUtility.UrlEncode(searchString);
 
@@ -449,7 +459,19 @@ namespace _4chanGrabbler
             int timeoutBetweenRequests = (60000 / requestsPerMinuteAllowed);
             timeoutBetweenRequests += 1000; // just a buffer to be safe.
 
-            string crawlUrlBase = "http://archive.4plebs.org/_/api/chan/search/?filename=" + searchTerm; // http://archive.4plebs.org/_/api/chan/search/?filename=wojak&end=2021-03-11
+            string crawlUrlBase = null;
+            if (searchType == SearchType.Image)
+            {
+                crawlUrlBase = "http://archive.4plebs.org/_/api/chan/search/?filename=" + searchTerm; // http://archive.4plebs.org/_/api/chan/search/?filename=wojak&end=2021-03-11
+            } else if(searchType == SearchType.Text)
+            {
+                crawlUrlBase = "http://archive.4plebs.org/_/api/chan/search/?text=" + searchTerm; // http://archive.4plebs.org/_/api/chan/search/?filename=wojak&end=2021-03-11
+            }
+
+            if(crawlUrlBase == null)
+            {
+                MessageBox.Show("Invaalid crawl url base (invalid search type?)");
+            }
 
             Regex zeroReplacer = new Regex(Regex.Escape("{\"0\":{"),RegexOptions.Compiled);
             Regex dateReformatter = new Regex(@"(\d+)/(\d+)/(\d+)\(\w+\)(\d+):(\d+)",RegexOptions.Singleline|RegexOptions.IgnoreCase|RegexOptions.Compiled);
@@ -495,7 +517,7 @@ namespace _4chanGrabbler
                         {
                             webcontent = strm.ReadToEnd();
 
-                            File.WriteAllText(Helpers.GetUnusedFilename( "debuglogs/4plebs_" + searchString + "_" + endDate + ".json"),webcontent);
+                            File.WriteAllText(Helpers.GetUnusedFilename( "debuglogs/4plebs_" + searchString + "_" + endDate.Replace(':','-') + ".json"),webcontent);
                             //File.AppendAllText(fileToSaveTo, webcontent);
 
                             string newText = zeroReplacer.Replace(webcontent,"{\"root\":{", 1);
@@ -507,8 +529,35 @@ namespace _4chanGrabbler
                             string lastFourChanDate = "";
                             foreach (FourPlebsSearchResult.Post post in ro.root.posts)
                             {
-                                string dlLink = post.media.media_link;
-                                imageDlLinks.Add(dlLink);
+                                if(searchType == SearchType.Image)
+                                {
+                                    string dlLink = post.media.media_link;
+                                    imageDlLinks.Add(dlLink);
+                                } else if(searchType == SearchType.Text)
+                                {
+                                    string textMatch = post.comment;
+                                    if (subRegex == null) {
+
+                                        imageDlLinks.Add(textMatch);
+                                    } else
+                                    {
+                                        // If regex specified, find matches within match
+                                        MatchCollection mc = subRegex.Matches(textMatch);
+                                        foreach(Match match in mc)
+                                        {
+                                            if(match.Groups.Count == 1) // No subgroups
+                                            {
+                                                imageDlLinks.Add(match.Groups[0].Value);
+                                            } else if(match.Groups.Count > 1) // Otherwise each group one match
+                                            {
+                                                for(int g =1; g < match.Groups.Count; g++)
+                                                {
+                                                    imageDlLinks.Add(match.Groups[g].Value);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                                 lastTimeStamp = post.timestamp;
                                 lastFourChanDate = post.fourchan_date;
                             }
@@ -689,5 +738,48 @@ namespace _4chanGrabbler
                 
         }
 
+        private void fourplebsTextSearchLinkCrawlButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (fourplebsImageSearchTerm.Text.Trim() == "")
+            {
+                MessageBox.Show("Enter a search term first");
+            }
+            else
+            {
+                string searchTerm = fourplebsImageSearchTerm.Text.Trim();
+                string subRegexText = fourplebsTextSearchRegex.Text.Trim();
+
+                if(subRegexText.Length == 0)
+                {
+                    subRegexText = null;
+                }
+
+                Regex subRegex = null;
+
+                if(subRegexText != null)
+                {
+                    try
+                    {
+                        subRegex = new Regex(subRegexText,RegexOptions.IgnoreCase  | RegexOptions.Singleline | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+                    }
+                    catch (Exception except)
+                    {
+                        MessageBox.Show("Regex compilation failed. \n"+except.Message);
+                        return;
+                    }
+                }
+
+                SaveFileDialog sfd = new SaveFileDialog();
+                sfd.Title = "Select an output text file to append matches to";
+                if (sfd.ShowDialog() == true)
+                {
+                    string saveFile = sfd.FileName;
+
+                    string endDateResume = txtEndDateResume.Text.Trim();
+
+                    fourPlebsSearch(SearchType.Text, searchTerm, subRegex, saveFile, endDateResume);
+                }
+            }
+        }
     }
 }

@@ -22,7 +22,10 @@
                         <TextBox x:Name="fourplebsImageSearchTerm"></TextBox>
                         <Label>end date resume:</Label>
                         <TextBox x:Name="txtEndDateResume"></TextBox>
-                        <Button x:Name="fourplebsImageSearchLinkCrawlButton" Click="fourplebsImageSearchLinkCrawlButton_Click">DoCrawl</Button>
+                        <Button x:Name="fourplebsImageSearchLinkCrawlButton" Click="fourplebsImageSearchLinkCrawlButton_Click">Image name search</Button>
+                        <Label>Text search subregex (optional):</Label>
+                        <TextBox x:Name="fourplebsTextSearchRegex"></TextBox>
+                        <Button x:Name="fourplebsTextSearchLinkCrawlButton" Click="fourplebsTextSearchLinkCrawlButton_Click">Text search</Button>
                         <TextBlock TextWrapping="Wrap">P.S. It's slow because of 4plebs' rate limits.</TextBlock>
                     </StackPanel>
                 </TabItem>
