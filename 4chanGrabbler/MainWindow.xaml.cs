@@ -26,7 +26,8 @@ namespace _4chanGrabbler
     enum SearchType
     {
         Image,
-        Text
+        Text,
+        ThreadText
     }
 
 
@@ -272,7 +273,7 @@ namespace _4chanGrabbler
 
                                                 using (var client = new WebClient())
                                                 {
-                                                    client.Headers.Set(HttpRequestHeader.UserAgent, "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0");
+                                                    client.Headers.Set(HttpRequestHeader.UserAgent, "Mozilla/5.0 (Windows NT 10.0; rv:114.0) Gecko/20100101 Firefox/114.0");
                                                     bool shouldDownload = true;
                                                     FileInfo fileInfo;
                                                     if (File.Exists(saveFolderPath + sanitizedRealName))
@@ -486,7 +487,13 @@ namespace _4chanGrabbler
                 int index = 0;
                 while (!searchFinished) {
 
-                    System.Threading.Thread.Sleep(timeoutBetweenRequests);
+                    string cookie = "";
+                    Dispatcher.Invoke(()=> {
+                        cookie = fourplebsCookies.Text;
+                    });
+                    cookie = cookie == null ? "" : cookie.Trim();
+
+                    if(index > 0) System.Threading.Thread.Sleep(timeoutBetweenRequests);
 
 
                     string crawlUrl = crawlUrlBase;
@@ -504,7 +511,13 @@ namespace _4chanGrabbler
                     }
                     progress.Report("try " + index++ + crawlUrl);
                     HttpWebRequest req = (HttpWebRequest)WebRequest.Create(crawlUrl);
-                    req.UserAgent = "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0";
+                    req.UserAgent = "Mozilla/5.0 (Windows NT 10.0; rv:114.0) Gecko/20100101 Firefox/114.0";
+
+                    if(cookie.Length > 0)
+                    {
+                        req.Headers.Add(HttpRequestHeader.Cookie, cookie);
+                    }
+
                     string webcontent = "";
                     try
                     {

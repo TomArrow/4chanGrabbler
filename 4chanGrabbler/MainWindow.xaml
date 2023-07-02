@@ -17,7 +17,9 @@
             <TabControl>
                 <TabItem Header="4plebs">
                     <StackPanel>
-                        <Label>4Plebs Image search link crawl</Label>
+                        <Label>4Plebs search crawl</Label>
+                        <Label>Cookies:</Label>
+                        <TextBox x:Name="fourplebsCookies"></TextBox>
                         <Label>Search term:</Label>
                         <TextBox x:Name="fourplebsImageSearchTerm"></TextBox>
                         <Label>end date resume:</Label>
