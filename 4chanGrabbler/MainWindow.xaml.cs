@@ -457,8 +457,9 @@ namespace _4chanGrabbler
             
 
             int requestsPerMinuteAllowed = 5;
-            int timeoutBetweenRequests = (60000 / requestsPerMinuteAllowed);
-            timeoutBetweenRequests += 1000; // just a buffer to be safe.
+            //int timeoutBetweenRequests = (60000 / requestsPerMinuteAllowed);
+            int timeoutBetweenRequests = 500; // Who cares, they say 5 per minute but that's obviously false. We'll just send quicker to ask them for the retry-after header.
+            //timeoutBetweenRequests += 1000; // just a buffer to be safe.
 
             string crawlUrlBase = null;
             if (searchType == SearchType.Image)
@@ -485,6 +486,7 @@ namespace _4chanGrabbler
                 bool isFirstRequest = true;
                 string endDateToAppend = "";
                 int index = 0;
+                int retryAfter = 0;
                 while (!searchFinished) {
 
                     string cookie = "";
@@ -493,8 +495,8 @@ namespace _4chanGrabbler
                     });
                     cookie = cookie == null ? "" : cookie.Trim();
 
-                    if(index > 0) System.Threading.Thread.Sleep(timeoutBetweenRequests);
-
+                    if(index > 0) System.Threading.Thread.Sleep(retryAfter == 0 ? timeoutBetweenRequests : retryAfter*1000);
+                    retryAfter = 0;
 
                     string crawlUrl = crawlUrlBase;
                     string endDate = "";
@@ -601,6 +603,20 @@ namespace _4chanGrabbler
                             {
 
                                 progress.Report(e.InnerException.Message);
+                            }
+                            try
+                            {
+                                if (e is WebException)
+                                {
+                                    WebException we = e as WebException;
+                                    var response = we.Response;
+                                    string retryAfterString = response.Headers[HttpResponseHeader.RetryAfter];
+                                    retryAfter = int.Parse(retryAfterString);
+                                    progress.Report($"Retry after {retryAfter} seconds.");
+                                }
+                            }catch(Exception ef)
+                            {
+                                progress.Report(ef.Message);
                             }
                         }
 
